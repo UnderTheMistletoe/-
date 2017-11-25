@@ -1,0 +1,38 @@
+\documentclass[UTF8]{ctexart}
+\title{Slacker: Fast Distribution With Lazy Docker Container}
+\author{张桐}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+容器化的应用现在越来越受到欢迎，但是不幸的是，目前部署容器的方法非常的慢。我们开发了一个全新的容器benchmark（HelloBench）来测量57种不同的容器化应用的启动时间。我们使用HelloBench来细致地分析工作负载，研究启动过程和容器镜像压缩过程中展现出的块I/O的模式。我们的分析展示出，启动容器所花时间有76\%是用来做pulling，但是pulling下来的数据中，只有6.4\%被读取了。我们使用这和其他的发现来指导设计出了Slacker，一个全新的，启动优化的Docker存储驱动。Slaker是基于中心化的，被Docker workers和registries共享的存储。Workers能够经过backend clone和通过lazy fetching容器数据来进行快速启动和确定容器的存储。Slacker能够提高中间容器的部署速度20倍，提高总体的部署速度5倍。
+% Slacker speeds up the median container development cycle by 20× and deployment cycle by 5×.
+\end{abstract}
+\section{Introduction}
+隔离是一种在云计算或者其他多租户平台中高度需求的属性。如果没有隔离机制，用户会面临性能的不稳定，可能存在的服务崩溃，还有严重的隐私泄露的威胁。
+
+Hypervisors，或者说虚拟机监控器（VMM）已经为应用提供了传统的隔离机制，每个应用都被部署到它们各自的虚拟机中，每个虚拟机为它们提供各自的环境和资源。不幸的是，hypervisors需要做出很多的特权级的操作，并且使用的是一些间接的技术来推断资源的使用情况。这就导致了hypervisors通常都很笨重，启动时间也很长，运行时的开销也非常大。
+
+随着Docker越来越受到欢迎，容器最近是作为一种轻量级的备择方案来替代基于hypervisor的虚拟化。在一个容器内部，所有的处理资源都被操作系统虚拟化了，包括网络端口和文件系统挂载点。容器本质上就是进程，它用虚拟化的方式使用所有资源，不仅仅是CPU与内存。正如我们以上提到的，不存在一些固有的因素导致容器的启动速度比正常的进程启动速度慢。
+
+但不幸的是，由于文件系统配置的瓶颈，启动容器要比启动进程慢得多。在启动容器时，初始化网络，计算，和内存资源都是很快的。一个容器化的应用需要一个完全初始化的文件系统，包含应用二进制，完整的Linux发行版，和包的依赖。在Docker或者Google Borg的集群中部署一个容器一般需要显著的复制和安装开销。
+
+如果启动时间能够被优化，那么就会有大量的优势：面对突然增大的访问量应用能够立即的扩展，集群调度可以在低代价的情况下频繁地进行负载均衡，当严重漏洞被修复后，更新地软件能迅速的进行部署，开发者也能更好地构建和测试已经分发地应用。
+
+我们采用了分两步的方法来解决容器启动的问题。第一，我们开发了一个新的开源的Docker benchmark，它会在容器启动的时候进行检测并记录。HelloBench基于57种不同的容器工作负载，确定容器从开始部署到能正常使用之间所耗费的时间。我们使用HelloBench和静态分析来表示Docker镜像和I/O模式的特征。我们的分析表明了（1）复制包数据耗费了76\%的启动时间，（2）被复制的数据中只有6.4\%是开始工作所实际需要的，（3）简单地对镜像进行block级的去重相比于使用gzip压缩单独的镜像能够有更好的压缩率。
+
+第二，我们使用我们的发现构建了Slacker，一个新的Docker存储驱动。它通过在stack中多个层次利用特殊的存储系统支持来完成快速分发。特殊地，Slacker使用我们后端服务器的快照和克隆来极大的减小Docker基本操作的开销。Slacker是使用lazily pull必要的数据，而不是预先下载整个容器的镜像，这能显著的减小网络I/O所花费的时间。我们还对Linux的内核进行修改来提升cache sharing，这也能提高Slacker的效率。
+
+使用这些技术的结果就是极大的提升了Docker基本操作的性能。镜像的push能够比以前快153倍，pull能比以前快72倍。基本的Docker操作用例能够在由于这个特性受益。举例来说，Slacker能够加快5倍中间容器的部署周期，20倍的整个部署周期。
+% For example, Slacker achieves a 5× median speedup for container deployment cycles and a 20× speedup for development cycles.
+
+我们也构建了MultiMake，一个新的基于容器的构建工具来展示Slacker快速启动的优势。MultiMake展示了从相同源代码生成16种不同的二进制文件，不同的文件由不同的容器化的GCC生成。在使用Slacker的情况下，MultiMake被加速了10倍。
+
+\section{Docker Backgroud}
+我们现在描述Docker框架，存储接口和默认存储驱动。
+\subsection{Version Control for Container}
+Linux总是利用虚拟化来隔离内存，cgroup通过提供6个新的名字空间，虚拟了一个资源的边界。名字空间包括文件系统挂载点，IPC队列，网络，主机名字，进程ID号和用户ID。
+
+\end{document}
